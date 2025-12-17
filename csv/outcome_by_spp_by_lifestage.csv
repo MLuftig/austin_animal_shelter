@@ -1,0 +1,25 @@
+spp,lifestage,outcome,num,rnk
+cat,juvenile,adoption,15833,1
+cat,juvenile,transfer,12797,2
+cat,juvenile,euthanasia,799,3
+cat,young adult,transfer,5219,1
+cat,young adult,adoption,2887,2
+cat,young adult,return to owner,753,3
+cat,adult,adoption,1445,1
+cat,adult,transfer,1347,2
+cat,adult,return to owner,592,3
+cat,senior,adoption,1221,1
+cat,senior,transfer,820,2
+cat,senior,return to owner,494,3
+dog,juvenile,adoption,12622,1
+dog,juvenile,transfer,5708,2
+dog,juvenile,return to owner,2285,3
+dog,young adult,adoption,13083,1
+dog,young adult,return to owner,7158,2
+dog,young adult,transfer,5396,3
+dog,adult,return to owner,5799,1
+dog,adult,adoption,5321,2
+dog,adult,transfer,2819,3
+dog,senior,return to owner,3980,1
+dog,senior,adoption,2191,2
+dog,senior,transfer,1413,3
