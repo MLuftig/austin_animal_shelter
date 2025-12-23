@@ -1,16 +1,6 @@
-
-'''import area'''
 import pandas as pd
 import numpy as np
-from geopy.geocoders import Nominatim
-from geopy.extra.rate_limiter import RateLimiter
 
-
-'''
-
-define functions
-
-'''
 #this function makes a header used in later functions
 def header():
     print('\n\n\n')
@@ -39,8 +29,8 @@ def import_data(file_name, table_name):
         return None
     
 def load_raw_tables():
-    intake = import_data("Austin_Animal_Center_Intakes.csv", "intake")
-    outcome = import_data("Austin_Animal_Center_Outcomes.csv", "outcome")
+    intake = import_data('/Users/nothing/Documents/data_analyst_portfolio/austin_animal_center/csv/Austin_Animal_Center_Intakes.csv', 'intake')
+    outcome = import_data('/Users/nothing/Documents/data_analyst_portfolio/austin_animal_center/csv/Austin_Animal_Center_Outcomes.csv', 'outcome')
     return intake, outcome
     
 def create_intake_table(df) -> pd.DataFrame:
@@ -54,7 +44,6 @@ def create_intake_table(df) -> pd.DataFrame:
         df
         .pipe(imported_data_clean, 'intake_data_raw')
         .pipe(datetime_y_lineid, 'intake_data')
-        #.pipe(narrow_to_intake_columns)
         .pipe(datetime_extraction, 'intake_table')
         .pipe(intake_condition_clean, 'intake_table')
         .pipe(table_check, 'intake_table')
@@ -71,7 +60,6 @@ def create_outtake_table(df) -> pd.DataFrame:
         df
         .pipe(imported_data_clean, 'outcome_data_raw')
         .pipe(datetime_y_lineid, 'outcome_data')
-        #.pipe(narrow_to_outcome_columns)
         .pipe(datetime_extraction, 'outcome_table')
         .pipe(clean_outcome_type, 'outcome_table')
         .pipe(clean_outcome_subtype, 'outcome_table')
@@ -90,7 +78,6 @@ def create_animal_table(animal_in, animal_out) -> pd.DataFrame:
 
         df = (df
                 .filter(regex = r'^(animal_id|name|animal_type|sex.*|age.*|breed|color)$').copy()
-                .drop_duplicates(subset = 'animal_id')
                 .pipe(clean_name)
                 .pipe(clean_age)
                 .pipe(lifecycle)
@@ -98,8 +85,11 @@ def create_animal_table(animal_in, animal_out) -> pd.DataFrame:
                 .pipe(clean_breed)
                 .pipe(clean_spp)
                 .pipe(akc_groups)
+                .pipe(clean_cat_breed_group)
                 .pipe(hair_length)
                 .pipe(clean_color)
+                .sort_values('age_yr', na_position='first')
+                .drop_duplicates(subset='animal_id', keep='last')
             )
        
         animals[name] = df
@@ -164,7 +154,7 @@ def create_los_table(df_in, df_out) -> pd.DataFrame:
 
     # calculate LOS
     los["length_of_stay_days"] = (los["datetime_outcome"] - los["datetime_intake"]).dt.days
-    los = clean_data(los)
+    
     print('\n\n\nLength of Stay Table Preview:')
     print(los.head())
 
@@ -221,61 +211,51 @@ def datetime_y_lineid(df, df_name) -> pd.DataFrame:
     except AssertionError as e:
         print(e)
         return None
-    
-def narrow_to_intake_columns(df) -> pd.DataFrame:
-    header()
-    print('Beginning to narrow to intake columns')
-    df = df[['line_id', 'animal_id', 'datetime', 'intake_condition']].copy()
-    print('...complete')
-    return df
 
 def datetime_extraction(df, df_name) -> pd.DataFrame:
     header()
     print(f'Beginning to extract from datetime in {df_name}')
-    #time.sleep(2)
-    df['year'] = df['datetime'].dt.year
-    df['month'] = df['datetime'].dt.month
 
-    conditions = [
-        df['month'].isin([3, 4, 5]), # spring
-        df['month'].isin([6, 7, 8]), # summer
-        df['month'].isin([9, 10, 11]), # fall
-        df['month'].isin([12, 1, 2]) # winter
-    ]
+    dt = df['datetime']
 
-    choices = [
-        'spring',
-        'summer',
-        'autumn',
-        'winter'
-    ]
+    # basic components
+    df['year'] = dt.dt.year
+    df['month'] = dt.dt.month
+    df['day'] = dt.dt.day                      # day of month (1–31)
+    df['hour'] = dt.dt.hour
+    df['minute'] = dt.dt.minute
 
-    df['season'] = np.select(conditions, choices, default = 'Unknown')
-    df['weekday'] = df['datetime'].dt.day_name()
-    df['weekday'] = df['weekday'].str.lower()
-    df['hour'] = df['datetime'].dt.hour
+    # week-related
+    df['week'] = dt.dt.isocalendar().week.astype(int)   # ISO week number (1–53)
+    df['iso_year'] = dt.dt.isocalendar().year.astype(int)
+    df['day_of_week'] = dt.dt.weekday          # Monday=0
+    df['weekday'] = dt.dt.day_name().str.lower()
+    df['is_weekend'] = df['day_of_week'].isin([5, 6])
 
-    conditions = [
-        (df['hour'] >= 7) & (df['hour'] < 16), # 7 AM to 3:59 PM
-        (df['hour'] >= 16) & (df['hour'] <= 23), # 4 PM to 11:59 PM (Note: Using <= 23 for clarity)
-        (df['hour'] >= 0) & (df['hour'] < 7) # 12 AM to 6:59 AM
+    # quarter
+    df['quarter'] = dt.dt.quarter
+    df['year_quarter'] = df['year'].astype(str) + '-Q' + df['quarter'].astype(str)
+
+    # season
+    season_conditions = [
+        df['month'].isin([3, 4, 5]),
+        df['month'].isin([6, 7, 8]),
+        df['month'].isin([9, 10, 11]),
+        df['month'].isin([12, 1, 2])
     ]
-    choices = [
-        'day',
-        'swing',
-        'overnight'
+    season_choices = ['spring', 'summer', 'autumn', 'winter']
+    df['season'] = np.select(season_conditions, season_choices, default='unknown')
+
+    # shift
+    shift_conditions = [
+        (df['hour'] >= 7) & (df['hour'] < 16),
+        (df['hour'] >= 16) & (df['hour'] <= 23),
+        (df['hour'] >= 0) & (df['hour'] < 7)
     ]
-    df['shift'] = np.select(conditions, choices, default = 'Unknown')
-    
+    shift_choices = ['day', 'swing', 'overnight']
+    df['shift'] = np.select(shift_conditions, shift_choices, default='unknown')
+
     print('...complete')
-    return df
-
-def check_id_length(df, df_name) -> pd.DataFrame:
-    header()
-    print(f'Beginning to check the length of animal_id in {df_name}...')
-    length_series = df['animal_id'].str.len()
-    num_animal_id_dif = (length_series != 7).sum()
-    print(f'\n\n\nthere are {num_animal_id_dif} lines with a length different than 7')
     return df
 
 def intake_condition_clean(df, df_name) -> pd.DataFrame:
@@ -331,13 +311,6 @@ def clean_outcome_type(df, df_name) -> pd.DataFrame:
     ]
 
     df['outcome_category'] = np.select(conditions, choices, default = 'unknown')
-    print('...complete')
-    return df
-
-def narrow_to_outcome_columns(df) -> pd.DataFrame:
-    header()
-    print('Beginning to narrow to outcome columns')
-    df = df[['line_id', 'animal_id', 'datetime', 'outcome_type', 'outcome_subtype']].copy()
     print('...complete')
     return df
 
@@ -449,9 +422,7 @@ def clean_age(df) -> pd.DataFrame:
         df['cln_age'] = df['age'].astype(str)
         df['age_num'] = df['cln_age'].str.split(' ', n = 1, expand = True)[0]
         df['age_num'] = df['age_num'].replace(['nan', ''], np.nan)
-        #print(df['age'].isna().sum())
         df['cln_age'] = df['cln_age'].replace(['nan', ''], np.nan)
-        #print(df[df['age'] == 'nan'].head())
         df['age_num'] = pd.to_numeric(df['age_num'])
         df['age_num'] = df['age_num'].where(df['age_num'] > 0, np.nan)
         
@@ -522,7 +493,8 @@ def clean_sex(df) -> pd.DataFrame:
         
         df['altered'] = (df['sex'].astype(str).str.startswith('n') | (df['sex'].astype(str).str.startswith('s')))
 
-        df = df.fillna('unknown')
+        df[['sex']] = df[['sex']].fillna('unknown')
+
         condition = [
             df['sex'].str.contains('fe'),
             df['sex'].str.contains('male')
@@ -566,6 +538,64 @@ def clean_breed(df) -> pd.DataFrame:
     except AssertionError as e:
         print(f'Error: {e}')
         return df
+    
+import numpy as np
+import pandas as pd
+import re
+
+def clean_cat_breed_group(df, breed_col='primary_breed', spp_col='cln_spp'):
+    """
+    Collapse cat breed information into standard coat-length categories:
+    DSH, DMH, or DLH.
+
+    Any cat breed that cannot be confidently classified by coat length
+    is set to NaN due to known unreliability of breed assignment in shelter data.
+
+    Non-cat species are also set to NaN.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input dataframe.
+    breed_col : str
+        Column containing raw breed information.
+    spp_col : str
+        Column containing species information.
+
+    Returns
+    -------
+    pandas.DataFrame
+        DataFrame with a new column 'cat_breed_group'.
+    """
+
+    df = df.copy()
+
+    def categorize_cat_breed(row):
+        # Not a cat -> not applicable
+        if row[spp_col] != 'cat':
+            return np.nan
+
+        breed = row[breed_col]
+
+        # Missing or unknown breed -> unreliable
+        if pd.isna(breed):
+            return np.nan
+
+        breed = breed.lower()
+
+        if re.search(r'short', breed):
+            return 'dsh'
+        elif re.search(r'medium', breed):
+            return 'dmh'
+        elif re.search(r'long', breed):
+            return 'dlh'
+        else:
+            return np.nan
+
+    df['cat_breed_group'] = df.apply(categorize_cat_breed, axis=1)
+
+    return df
+
 
 def clean_spp(df) -> pd.DataFrame:
     header2()
@@ -705,9 +735,9 @@ def hair_length(df) -> pd.DataFrame:
     r'\b(long|longhair|long-hair|lg hair|l hair|lh)\b',
     case=False, regex=True
 )
-    print(f'\n\n\nshort hair:\n{df.loc[short_hair]}')
-    print(f'\n\n\nmedium hair:\n{df.loc[medium_hair]}')
-    print(f'\n\n\nlong hair:\n{df.loc[long_hair]}')
+    '''print(f'\n\n\nshort hair:\n{df.loc[short_hair].head()}')
+    print(f'\n\n\nmedium hair:\n{df.loc[medium_hair].head()}')
+    print(f'\n\n\nlong hair:\n{df.loc[long_hair].head()}')'''
 
     order = [short_hair, medium_hair, long_hair]
 
@@ -767,6 +797,68 @@ def patterned(df) -> pd.DataFrame:
     df.loc[is_patterned, 'cln_color'] = 'patterned'
     return df
        
+def find_overlapping_columns(*dfs, names=None):
+    if names is None:
+        names = [f'df_{i}' for i in range(len(dfs))]
+
+    col_sets = {name: set(df.columns) for name, df in zip(names, dfs)}
+
+    overlaps = {}
+    for name1, cols1 in col_sets.items():
+        for name2, cols2 in col_sets.items():
+            if name1 < name2:
+                common = cols1 & cols2
+                if common:
+                    overlaps[f'{name1} & {name2}'] = sorted(common)
+
+    return overlaps
+
+
+def clean_animal_dimension(df) -> pd.DataFrame:
+    keep_cols = [
+        'animal_id',
+        'cln_name_outcome',
+        'cln_spp_outcome',
+        'primary_breed_intake',
+        'secondary_breed_intake',
+        'akc_group_outcome',
+        'hair_length_outcome',
+        'cln_color_intake',
+        'altered_outcome',
+        'cln_sex_outcome',
+        'age_yr_outcome',
+        'lifecycle_stage_outcome'
+    ]
+    return df[keep_cols].copy()
+
+def drop_dimension_columns(df) -> pd.DataFrame:
+    drop_patterns = [
+        r'^cln_',
+        r'^primary_breed',
+        r'^secondary_breed',
+        r'^akc_',
+        r'^hair_length',
+        r'^age_yr',
+        r'^lifecycle'
+    ]
+
+    drop_cols = [
+        col for col in df.columns
+        if any(pd.Series(col).str.contains(pat, regex=True).iloc[0]
+               for pat in drop_patterns)
+    ]
+
+    return df.drop(columns=drop_cols, errors='ignore')
+
+
+def clean_los_table(df) -> pd.DataFrame:
+    return df[['animal_id', 'datetime_intake', 'datetime_outcome', 'length_of_stay_days']].copy()
+
+def reorder_columns(df, first_cols):
+    remaining = [c for c in df.columns if c not in first_cols]
+    return df[first_cols + remaining]
+
+
 def export_tables(intake_df, outcome_df, animal_df, los_df) -> None:
     header()
     print('Beginning to export tables to CSV files')
@@ -775,6 +867,11 @@ def export_tables(intake_df, outcome_df, animal_df, los_df) -> None:
     animal_df.to_csv('animal_table.csv', index = False)
     los_df.to_csv('length_of_stay_table.csv', index = False)
     print('...export complete') 
+
+
+
+
+
 '''
 Body
 
@@ -790,8 +887,20 @@ header()
 header2()
 header()
 
+find_overlapping_columns(
+    intake, outcome, animal, los_table,
+    names=['intake', 'outcome', 'animal', 'los']
+)
 
-print('\n\n\n CURRENT INTAKE TABLE: ')
+
+animal = clean_animal_dimension(animal)
+intake = drop_dimension_columns(intake)
+outcome = drop_dimension_columns(outcome)
+los_table = clean_los_table(los_table)
+
+intake = reorder_columns(intake, ['line_id', 'animal_id', 'datetime'])
+
+'''print('\n\n\n CURRENT INTAKE TABLE: ')
 print(intake.head(25))
 print('\n\n\n CURRENT OUTCOME TABLE: ')
 print(outcome.head(25))
@@ -800,4 +909,8 @@ print(animal.head(25))
 print('\n\n\n CURRENT LENGTH OF STAY TABLE: ')
 print(los_table.head(25))
 
-export_tables(intake, outcome, animal, los_table)
+print(intake.columns)
+print(outcome.columns)
+print(animal.columns)
+print(los_table.columns)
+#export_tables(intake, outcome, animal, los_table)'''

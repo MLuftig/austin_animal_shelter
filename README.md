@@ -1,45 +1,123 @@
-🐶 Austin Animal Center Data Analysis
+# Python Data Preparation and Feature Engineering
 
-Project Overview
+## Project Overview
 
-This project analyzes the public intake and outcome data from the Austin Animal Center (AAC) to identify trends, improve operational efficiency, and answer key questions about animal welfare and adoption rates.
+This project analyzes public intake and outcome data from the **Austin Animal Center (AAC)** to identify patterns in animal intake, outcomes, length of stay, and repeat visits. The broader goal is to support data-driven recommendations that improve operational efficiency and animal welfare, with particular attention to high-utilization and end-of-life cases.
 
-The analysis focuses on standardizing data, handling missing values, and deriving new features (e.g., age upon outcome, time spent in the shelter) to inform data-driven decisions.
+Python is used to clean raw data, standardize inconsistent fields, engineer analytical features, and construct analysis-ready tables used downstream in SQL and Tableau.
 
-Methodology and Analysis
+---
 
-1. Data Cleaning and Preprocessing (Python)
+## Data Sources
 
-Source Data: The primary data comes from two CSV files: Austin_Animal_Center_Intakes.csv and Austin_Animal_Center_Outcomes.csv.  Information regarding specific species was extracted using python and imported into Google sheets where additional information was added regarding group, size, etc.
+- `Austin_Animal_Center_Intakes.csv`
+- `Austin_Animal_Center_Outcomes.csv`
 
-Initial steps:
-	- imported csv files
+Additional categorical groupings (e.g., species groupings and size classes) were derived in Python and, where appropriate, supplemented in Google Sheets to support consistent classification.
 
-2. SQL Integration (Future Step)
+---
 
-The cleaned data will be loaded into a SQL database (e.g., PostgreSQL or SQLite) to facilitate complex querying, aggregation, and performance analysis.
+## Data Cleaning Strategy
 
-3. Key Insights & Findings
+The raw AAC data contains inconsistent formatting, mixed data types, duplicate records, and free-text categorical fields. To address this, reusable pipeline-style cleaning functions were developed and applied consistently across tables.
 
-(Note: Once analysis is complete, I will replace this text with 3-5 bullet points summarizing what you found. Example topics to explore:)
+### General Cleaning Steps
 
-Adoption Rates by Breed: Which top 5 breeds have the highest and lowest adoption success rates?
+Across intake and outcome data:
+- Column names were standardized to `snake_case`
+- Whitespace was trimmed and string values normalized
+- Datetime fields were validated and coerced to consistent formats
+- Duplicate records were removed while preserving legitimate repeat visits
+- Unique line-level identifiers were created to support joins and quality checks
 
-Seasonal Trends: Is there a correlation between the time of year and the number of intakes or euthanasia events?
+---
 
-Impact of Spay/Neuter Status: How does the status of an animal upon intake correlate with its eventual outcome?
+## Datetime Feature Engineering
 
-Dashboard Visualization (Tableau/Power BI)
+From intake and outcome timestamps, multiple time-based features were derived to support operational and staffing analysis:
 
-A publicly viewable dashboard visualizing the final insights will be hosted on [Tableau Public/GitHub Pages].
+- Calendar attributes (year, month, day)
+- ISO week and ISO year (for standardization)
+- Weekday versus weekend classification
+- Seasonal grouping
+- Operational shift classification (day, swing, overnight)
 
-[LINK TO FINAL DASHBOARD HERE]
+These features enable later analysis of intake patterns, length of stay, and staffing pressure by time period.
 
- Requirements to Run Code
+---
 
-To replicate the data cleaning steps, please ensure you have the following Python libraries installed:
+## Intake Table Processing
 
-pandas
+Raw intake condition values were consolidated into analytically meaningful categories to reduce noise and improve interpretability:
 
-numpy
+- **Medical** (e.g., sick, injured, medical, aged)
+- **Behavioral** (e.g., behavior, feral)
+- **Reproductive** (e.g., pregnant, nursing)
+- **Routine** (normal)
 
+This grouping reflects real-world handling considerations while preserving operational relevance.
+
+---
+
+## Outcome Table Processing
+
+Outcome data was similarly standardized.
+
+### Outcome Type Consolidation
+
+Raw outcome types were grouped into:
+- **Alive** (adoption, return to owner, RTO-adopt)
+- **Administrative** (transfer, relocation)
+- **Deceased** (euthanasia, died, disposal)
+- **Unknown**
+
+### Outcome Subtype Consolidation
+
+Outcome subtypes were grouped into broader categories:
+- Location-based
+- Behavioral
+- Program-related
+- Administrative
+- Unknown
+
+This structure supports consistent outcome analysis across species and life stages.
+
+---
+
+## Animal Master Table Construction
+
+A unified animal-level table was created by merging cleaned intake and outcome records. Key transformations include:
+
+- Name normalization and identification of assigned versus intake names
+- Age parsing and conversion to standardized year units
+- Life stage classification (juvenile, young adult, adult, senior)
+- Sex standardization
+- Species and subgroup assignment
+- Breed simplification and AKC group derivation for dogs
+- Cat breed information was limited to coat-length categories (DSH, DMH, DLH); all other values were treated as missing due to known unreliability of breed assignment in shelter populations
+- Color normalization and pattern grouping
+
+When attributes changed over time (e.g., age, sex, altered status), the most recent reliable value was retained to reflect the animals final known state.
+
+---
+
+## Length of Stay (LOS) Table
+
+A dedicated length-of-stay table was generated by pairing each intake with its corresponding outcome:
+
+- Intake and outcome timestamps were matched chronologically
+- Length of stay was calculated at the intake outcome level
+- This table supports analysis of repeat visits, prolonged stays, and resource-intensive cases
+
+---
+
+## Outputs
+
+Python preprocessing produces the following analysis-ready tables used in SQL and Tableau:
+
+- Cleaned Intake Table  
+- Cleaned Outcome Table  
+- Animal Master Table  
+- Length of Stay (LOS) Table  
+
+These tables form the foundation for downstream querying, visualization, and policy-oriented analysis.
